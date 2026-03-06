@@ -32,7 +32,7 @@ function clearSession() {
 }
 
 async function invoke(cli, prompt, options = {}) {
-  const { model, onData, onError, resume, sessionId } = options;
+  const { model, onData, onError, resume, sessionId, timeout = 300000 } = options;
   
   return new Promise((resolve, reject) => {
     const args = ['run', '--format', 'json'];
@@ -62,6 +62,34 @@ async function invoke(cli, prompt, options = {}) {
 
     let fullText = '';
     let currentSessionId = null;
+    let lastActivity = Date.now();
+    let timeoutId = null;
+    let isResolved = false;
+
+    const cleanup = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      if (proc && !proc.killed) {
+        proc.kill('SIGTERM');
+      }
+    };
+
+    const resetTimeout = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      lastActivity = Date.now();
+      timeoutId = setTimeout(() => {
+        cleanup();
+        if (!isResolved) {
+          reject(new Error(`Timeout after ${timeout}ms of inactivity`));
+        }
+      }, timeout);
+    };
+
+    resetTimeout();
 
     rl.on('line', (line) => {
       try {
@@ -82,28 +110,45 @@ async function invoke(cli, prompt, options = {}) {
         if (data.type === 'step_finish' && data.sessionID) {
           saveSession(data.sessionID);
         }
+        
+        resetTimeout();
       } catch (err) {
         if (onError) {
-          onError(err);
+          onError(new Error(`JSON parse error: ${err.message}`));
         }
       }
     });
 
+    proc.stdout.on('data', () => {
+      resetTimeout();
+    });
+
     proc.stderr.on('data', (data) => {
+      resetTimeout();
       if (onError) {
         onError(data.toString());
       }
     });
 
     proc.on('exit', (code) => {
-      if (code === 0) {
-        resolve(fullText);
-      } else {
-        reject(new Error(`Process exited with code ${code}`));
+      cleanup();
+      if (!isResolved) {
+        isResolved = true;
+        if (code === 0) {
+          resolve(fullText);
+        } else {
+          reject(new Error(`Process exited with code ${code}`));
+        }
       }
     });
 
-    proc.on('error', reject);
+    proc.on('error', (err) => {
+      cleanup();
+      if (!isResolved) {
+        isResolved = true;
+        reject(err);
+      }
+    });
   });
 }
 
