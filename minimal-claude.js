@@ -32,6 +32,24 @@ function clearSession() {
 }
 
 async function invoke(cli, prompt, options = {}) {
+  const { model, onData, onError, resume, sessionId, timeout = 300000, retries = 0 } = options;
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await invokeOnce(cli, prompt, { model, onData, onError, resume, sessionId, timeout });
+    } catch (err) {
+      if (attempt === retries) {
+        throw err;
+      }
+      if (onError) {
+        onError(new Error(`Retry ${attempt + 1}/${retries}: ${err.message}`));
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+    }
+  }
+}
+
+async function invokeOnce(cli, prompt, options = {}) {
   const { model, onData, onError, resume, sessionId, timeout = 300000 } = options;
   
   return new Promise((resolve, reject) => {
@@ -62,17 +80,40 @@ async function invoke(cli, prompt, options = {}) {
 
     let fullText = '';
     let currentSessionId = null;
-    let lastActivity = Date.now();
     let timeoutId = null;
     let isResolved = false;
+    const signalHandlers = [];
 
-    const cleanup = () => {
+    const setupSignalHandlers = () => {
+      const signals = ['SIGTERM', 'SIGINT'];
+      signals.forEach(signal => {
+        const handler = () => {
+          cleanup();
+          process.exit(1);
+        };
+        process.on(signal, handler);
+        signalHandlers.push({ signal, handler });
+      });
+    };
+
+    const cleanup = async () => {
       if (timeoutId) {
         clearTimeout(timeoutId);
         timeoutId = null;
       }
+      
+      signalHandlers.forEach(({ signal, handler }) => {
+        process.off(signal, handler);
+      });
+      
       if (proc && !proc.killed) {
         proc.kill('SIGTERM');
+        
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        if (!proc.killed) {
+          proc.kill('SIGKILL');
+        }
       }
     };
 
@@ -80,7 +121,6 @@ async function invoke(cli, prompt, options = {}) {
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
-      lastActivity = Date.now();
       timeoutId = setTimeout(() => {
         cleanup();
         if (!isResolved) {
@@ -89,6 +129,7 @@ async function invoke(cli, prompt, options = {}) {
       }, timeout);
     };
 
+    setupSignalHandlers();
     resetTimeout();
 
     rl.on('line', (line) => {
@@ -114,7 +155,7 @@ async function invoke(cli, prompt, options = {}) {
         resetTimeout();
       } catch (err) {
         if (onError) {
-          onError(new Error(`JSON parse error: ${err.message}`));
+          onError(new Error(`JSON parse error: ${err.message}\nLine: ${line}`));
         }
       }
     });
@@ -130,14 +171,18 @@ async function invoke(cli, prompt, options = {}) {
       }
     });
 
-    proc.on('exit', (code) => {
+    proc.on('exit', (code, signal) => {
       cleanup();
       if (!isResolved) {
         isResolved = true;
         if (code === 0) {
           resolve(fullText);
         } else {
-          reject(new Error(`Process exited with code ${code}`));
+          reject(new Error(
+            `Process exited with code ${code}, signal: ${signal}\n` +
+            `Command: ${cli} ${args.join(' ')}\n` +
+            `Session: ${currentSessionId || 'N/A'}`
+          ));
         }
       }
     });
