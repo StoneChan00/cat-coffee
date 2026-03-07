@@ -11,21 +11,21 @@
 
 ## 文件说明
 
-### 1. callback-server.js — HTTP 回调服务器
+### 1. src/callback-server.js — HTTP 回调服务器
 
 监听 3200 端口，提供两个 API：
 
 - `POST /api/callbacks/post-message` - 发送消息到聊天室
 - `GET /api/callbacks/thread-context` - 获取对话上下文
 
-### 2. cat-cafe-mcp.js — MCP Server
+### 2. src/cat-cafe-mcp.js — MCP Server
 
 提供两个 MCP 工具：
 
 - `cat_cafe_post_message(content)` - 发送消息到聊天室
 - `cat_cafe_get_context()` - 获取对话上下文
 
-### 3. run-cat.js — 调用脚本
+### 3. src/run-cat.js — 调用脚本
 
 启动 opencode CLI，动态挂载 MCP Server。
 
@@ -40,7 +40,7 @@ npm install @modelcontextprotocol/sdk
 ### 2. 启动回调服务器
 
 ```bash
-node callback-server.js
+node src/callback-server.js
 ```
 
 服务器会输出：
@@ -71,7 +71,7 @@ export CAT_CAFE_CALLBACK_TOKEN=xxx-xxx-xxx
 ### 4. 运行调用脚本
 
 ```bash
-node run-cat.js
+node src/run-cat.js
 ```
 
 ## 预期输出

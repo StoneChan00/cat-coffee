@@ -7,7 +7,7 @@ const CALLBACK_TOKEN = process.env.CAT_CAFE_CALLBACK_TOKEN;
 
 if (!INVOCATION_ID || !CALLBACK_TOKEN) {
   console.error('Error: 请先启动 callback-server.js 并设置环境变量');
-  console.error('运行: node callback-server.js');
+  console.error('运行: node src/callback-server.js');
   console.error('然后设置:');
   console.error('  export CAT_CAFE_API_URL=http://localhost:3200');
   console.error('  export CAT_CAFE_INVOCATION_ID=xxx');
@@ -38,6 +38,7 @@ const args = [
     'run',
     prompt,
     '--format', 'json',
+    '--verbose',
     '--mcp-config', JSON.stringify(mcpConfig)
 ];
 
@@ -51,16 +52,6 @@ console.log('');
 const proc = spawn('opencode.cmd', args, {
   stdio: 'inherit',
   shell: true
-});
-
-proc.on('exit', (code) => {
-  console.log(`\nProcess exited with code ${code}`);
-  process.exit(code);
-});
-
-proc.on('error', (err) => {
-  console.error('Error:', err);
-  process.exit(1);
 });
 
 proc.on('exit', (code) => {
