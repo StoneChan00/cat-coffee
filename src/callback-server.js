@@ -3,8 +3,8 @@ const crypto = require('crypto');
 
 const PORT = 3200;
 
-const invocationId = crypto.randomUUID();
-const callbackToken = crypto.randomUUID();
+const invocationId = process.env.CAT_CAFE_INVOCATION_ID || crypto.randomUUID();
+const callbackToken = process.env.CAT_CAFE_CALLBACK_TOKEN || crypto.randomUUID();
 
 console.log('='.repeat(60));
 console.log('Callback Server Started');
@@ -76,6 +76,17 @@ const server = http.createServer((req, res) => {
   } else {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Not found' }));
+  }
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Error: Port ${PORT} is already in use`);
+    console.error('Please stop the existing server or use a different port');
+    process.exit(1);
+  } else {
+    console.error('Server error:', err);
+    process.exit(1);
   }
 });
 
